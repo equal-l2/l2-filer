@@ -38,7 +38,7 @@ impl State {
         let s = &self.content[self.index].clone();
         let p = Path::new(s.as_str());
         if std::fs::metadata(p).unwrap().is_dir() {
-            std::env::set_current_dir(p);
+            assert!(std::env::set_current_dir(p).is_ok());
             self.index = 0;
             self.content = get_current_dir_contents();
         }
@@ -59,12 +59,19 @@ impl State {
     fn list_current_dir(&mut self, rb:&mut RustBox) {
         rb.clear();
         self.queue.push((std::env::current_dir().unwrap().into_os_string().into_string().unwrap(),rustbox::RB_REVERSE));
+        self.queue.push((String::from(""),rustbox::RB_NORMAL));
         for (i, entry) in self.content.iter().enumerate() {
             let sty =
                 if self.index == i { rustbox::RB_REVERSE }
                 else               { rustbox::RB_NORMAL }
             ;
-            self.queue.push((entry.to_owned(),sty));
+            let p = Path::new(entry);
+            if std::fs::metadata(p).unwrap().is_dir() {
+                self.queue.push(([entry,"/"].concat(),sty));
+            }
+            else {
+                self.queue.push((entry.to_owned(),sty));
+            }
         }
         self.print(rb);
     }
