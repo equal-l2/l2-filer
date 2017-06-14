@@ -1,6 +1,7 @@
 extern crate rustbox;
 use rustbox::Style;
 use rustbox::RustBox;
+use std::process::{Command, Stdio};
 use std::error::Error;
 use std::path::Path;
 use std::string::String;
@@ -15,23 +16,29 @@ fn get_current_dir_contents() -> Vec<String> {
     get_dir_contents(std::env::current_dir().unwrap().as_path())
 }
 
-struct State {
-    index  :usize,
-    content:Vec<String>,
-    queue  :Vec<(String,Style)>
+struct State<'a> {
+    index   :usize,
+    content :Vec<String>,
+    queue   :Vec<(String,Style)>,
+    rb      :&'a rustbox::RustBox
 }
 
-impl State {
-    fn new() -> State {
-        State{index:0,content:get_current_dir_contents(),queue:vec!()}
+impl<'a> State<'a> {
+    fn new(rb_ref:&rustbox::RustBox) -> State {
+        State{
+            index:0,
+            content:get_current_dir_contents(),
+            queue:vec!(),
+            rb:rb_ref
+        }
     }
 
     fn inc_index(&mut self){
-        if self.index < get_current_dir_contents().len()-1 { self.index+=1; };
+        if self.index < self.content.len()-1 { self.index += 1; };
     }
 
     fn dec_index(&mut self){
-        if self.index > 0  { self.index-=1; };
+        if self.index > 0  { self.index -= 1; };
     }
 
     fn open(&mut self){
@@ -43,21 +50,30 @@ impl State {
             self.content = get_current_dir_contents();
         }
         else {
-            ;
+            let editor = match std::env::var("EDITOR") {
+                Ok(val) => val,
+                Err(_)  => String::from("vi")
+            };
+
+            Command::new(editor)
+                .args(&[s])
+                .status();
+
+            std::thread::sleep(std::time::Duration::from_millis(1000));
         }
     }
 
-    fn print(&mut self, rb:&mut RustBox){
+    fn print(&mut self){
         for (i, entry) in self.queue.iter().enumerate() {
             let (s,sty) = entry.clone();
-            rb.print(0,i,sty,rustbox::Color::White,rustbox::Color::Black,s.as_str());
+            self.rb.print(0,i,sty,rustbox::Color::White,rustbox::Color::Black,s.as_str());
         }
-        rb.present();
+        self.rb.present();
         self.queue.clear();
     }
 
-    fn list_current_dir(&mut self, rb:&mut RustBox) {
-        rb.clear();
+    fn list_current_dir(&mut self) {
+        self.rb.clear();
         self.queue.push((std::env::current_dir().unwrap().into_os_string().into_string().unwrap(),rustbox::RB_REVERSE));
         self.queue.push((String::from(""),rustbox::RB_NORMAL));
         for (i, entry) in self.content.iter().enumerate() {
@@ -73,16 +89,16 @@ impl State {
                 self.queue.push((entry.to_owned(),sty));
             }
         }
-        self.print(rb);
+        self.print();
     }
 }
 
 fn main(){
-    let mut f = State::new();
     let mut rb = rustbox::RustBox::init(Default::default()).unwrap();
+    let mut f = State::new(&rb);
 
     loop {
-        f.list_current_dir(&mut rb);
+        f.list_current_dir();
         match rb.poll_event(false) {
             Ok(rustbox::Event::KeyEvent(key)) => {
                 match key {
@@ -91,7 +107,7 @@ fn main(){
                     rustbox::Key::Char('j') => { f.inc_index(); }
                     rustbox::Key::Up |
                     rustbox::Key::Char('k') => { f.dec_index(); }
-                    rustbox::Key::Enter     => { f.open(); }
+                    rustbox::Key::Enter     => { f.open();      }
                     _ => { }
                 }
             },
