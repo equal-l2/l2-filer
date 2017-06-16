@@ -34,29 +34,30 @@ fn get_current_dir_contents() -> std::io::Result<Vec<String>> {
 const PRINT_OFFSET:usize = 5;
 
 struct State<'a> {
-    index   :usize,
-    page    :usize,
-    content :Vec<String>,
-    queue   :Vec<(String,Style)>,
-    error   :String,
-    rb      :&'a rustbox::RustBox
+    index    : usize,
+    page     : usize,
+    content  : Vec<String>,
+    queue    : Vec<(String,Style)>,
+    error    : String,
+    item_num : usize,
+    rb       : &'a rustbox::RustBox
 }
 
 impl<'a> State<'a> {
     fn new(rb_ref:&rustbox::RustBox) -> State {
         State{
-            index:0,
-            page:0,
-            content: get_current_dir_contents().unwrap(),
-            queue:vec!(),
-            error:String::from(""),
-            rb:rb_ref
+            index    : 0,
+            page     : 0,
+            content  : get_current_dir_contents().unwrap(),
+            queue    : vec!(),
+            error    : String::from(""),
+            item_num : 0,
+            rb       : rb_ref
         }
     }
 
     fn inc_index(&mut self){
-        let items = std::cmp::min(self.rb.height()-PRINT_OFFSET,self.content.len());
-        if self.index < items-1 { self.index += 1; };
+        if self.index < self.item_num-1 { self.index += 1; };
     }
 
     fn dec_index(&mut self){
@@ -133,12 +134,15 @@ impl<'a> State<'a> {
         self.queue.push((String::from(""), rustbox::RB_NORMAL));
 
         let min = self.page*(self.rb.height()-PRINT_OFFSET);
+        self.item_num = 0;
         for i in 0..(self.rb.height()-PRINT_OFFSET) {
+            if i+min >= self.content.len() { break; }
+
+            self.item_num += 1;
             let sty =
                 if self.index == i { rustbox::RB_REVERSE }
                 else               { rustbox::RB_NORMAL }
             ;
-            if i+min >= self.content.len() { break; }
             let entry = &self.content[i+min];
             let p = Path::new(entry);
             if std::fs::metadata(p).unwrap().is_dir() {
