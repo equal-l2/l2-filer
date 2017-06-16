@@ -1,6 +1,6 @@
 extern crate rustbox;
 use rustbox::{Style,RustBox,Key};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::error::Error;
 use std::path::Path;
 use std::string::String;
@@ -13,7 +13,7 @@ fn get_dir_contents(p:&Path) -> std::io::Result<Vec<String>> {
                     match v.path().file_name() {
                         Some(v) => match v.to_os_string().into_string() {
                             Ok(v) => v,
-                            Err(e) => String::from("")
+                            Err(_) => String::from("")
                         },
                         None => String::from("")
                     }
@@ -75,7 +75,7 @@ impl<'a> State<'a> {
     }
 
     fn open(&mut self){
-        let s = &self.content[self.index].clone();
+        let s = &self.content[self.page*(self.rb.height()-PRINT_OFFSET)+self.index].clone();
         let p = Path::new(s.as_str());
         match std::fs::metadata(p) {
             Ok(v) => {
@@ -90,6 +90,7 @@ impl<'a> State<'a> {
                                 }
                             };
                             self.index = 0;
+                            self.page  = 0;
                         },
                         Err(_) => {
                             self.error = String::from("Cannot open directory");
