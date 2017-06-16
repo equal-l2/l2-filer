@@ -8,17 +8,17 @@ use std::string::String;
 fn get_dir_contents(p:&Path) -> std::io::Result<Vec<String>> {
     let mut content:Vec<_> = match std::fs::read_dir(p) {
         Ok(v) => {
-            v.map(|x| match x {
+            v.filter_map(|x| match x {
                 Ok(v) => {
                     match v.path().file_name() {
                         Some(v) => match v.to_os_string().into_string() {
-                            Ok(v) => v,
-                            Err(_) => String::from("")
+                            Ok(v) => Some(v),
+                            Err(_) => None
                         },
-                        None => String::from("")
+                        None => None
                     }
                 },
-                Err(_) => String::from("")
+                Err(_) => None
             }).collect()
         },
         Err(e) => {return Err(e);}
