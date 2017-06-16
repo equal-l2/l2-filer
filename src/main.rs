@@ -5,23 +5,40 @@ use std::error::Error;
 use std::path::Path;
 use std::string::String;
 
-fn get_dir_contents(p:&Path) -> Vec<String> {
-    let mut content:Vec<_> = std::fs::read_dir(p).unwrap().map(|x| x.unwrap().path().file_name().unwrap().to_os_string().into_string().unwrap()).collect();
+fn get_dir_contents(p:&Path) -> std::io::Result<Vec<String>> {
+    let mut content:Vec<_> = match std::fs::read_dir(p) {
+        Ok(v) => {
+            v.map(|x| match x {
+                Ok(v) => {
+                    match v.path().file_name() {
+                        Some(v) => match v.to_os_string().into_string() {
+                            Ok(v) => v,
+                            Err(e) => String::from("")
+                        },
+                        None => String::from("")
+                    }
+                },
+                Err(_) => String::from("")
+            }).collect()
+        },
+        Err(e) => {return Err(e);}
+    };
     content.insert(0, String::from(".."));
-    content
+    Ok(content)
 }
 
-fn get_current_dir_contents() -> Vec<String> {
+fn get_current_dir_contents() -> std::io::Result<Vec<String>> {
     get_dir_contents(std::env::current_dir().unwrap().as_path())
 }
 
-const PRINT_OFFSET:usize = 4;
+const PRINT_OFFSET:usize = 5;
 
 struct State<'a> {
     index   :usize,
     page    :usize,
     content :Vec<String>,
     queue   :Vec<(String,Style)>,
+    error   :String,
     rb      :&'a rustbox::RustBox
 }
 
@@ -30,8 +47,9 @@ impl<'a> State<'a> {
         State{
             index:0,
             page:0,
-            content:get_current_dir_contents(),
+            content: get_current_dir_contents().unwrap(),
             queue:vec!(),
+            error:String::from(""),
             rb:rb_ref
         }
     }
@@ -59,23 +77,39 @@ impl<'a> State<'a> {
     fn open(&mut self){
         let s = &self.content[self.index].clone();
         let p = Path::new(s.as_str());
-        if std::fs::metadata(p).unwrap().is_dir() {
-            assert!(std::env::set_current_dir(p).is_ok());
-            self.index = 0;
-            self.content = get_current_dir_contents();
-        }
-        else {
-            let editor = match std::env::var("EDITOR") {
-                Ok(val) => val,
-                Err(_)  => String::from("vi")
-            };
+        match std::fs::metadata(p) {
+            Ok(v) => {
+                if v.is_dir() {
+                    match std::env::set_current_dir(p) {
+                        Ok(_) => {
+                            self.content = match get_current_dir_contents() {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    self.error = String::from("Cannot open directory");
+                                    return;
+                                }
+                            };
+                            self.index = 0;
+                        },
+                        Err(_) => {
+                            self.error = String::from("Cannot open directory");
+                            return;
+                        }
+                    }
+                }
+                else {
+                    let editor = match std::env::var("EDITOR") {
+                        Ok(val) => val,
+                        Err(_)  => String::from("vi")
+                    };
 
-            Command::new(editor)
-                .arg(s)
-                .status()
-                .unwrap();
-
-            std::thread::sleep(std::time::Duration::from_millis(1000));
+                    Command::new(editor)
+                        .arg(s)
+                        .status()
+                        .unwrap();
+                }
+            },
+            Err(_) => { return; }
         }
     }
 
@@ -87,12 +121,14 @@ impl<'a> State<'a> {
         }
         self.rb.present();
         self.queue.clear();
+        self.error = String::from("");
     }
 
     fn list_current_dir(&mut self) {
         let pages = self.content.len() / (self.rb.height()-PRINT_OFFSET);
         self.queue.push((std::env::current_dir().unwrap().into_os_string().into_string().unwrap(),rustbox::RB_REVERSE));
         self.queue.push((format!("Item(s): {} Page(s):{}/{}", self.content.len(), self.page+1, pages+1), rustbox::RB_REVERSE));
+        self.queue.push((format!("{}",self.error),rustbox::RB_REVERSE));
         self.queue.push((String::from(""), rustbox::RB_NORMAL));
 
         let min = self.page*(self.rb.height()-PRINT_OFFSET);
