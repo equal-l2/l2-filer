@@ -1,6 +1,5 @@
 extern crate rustbox;
-use rustbox::Style;
-use rustbox::RustBox;
+use rustbox::{Style,RustBox,Key};
 use std::process::{Command, Stdio};
 use std::error::Error;
 use std::path::Path;
@@ -8,7 +7,7 @@ use std::string::String;
 
 fn get_dir_contents(p:&Path) -> Vec<String> {
     let mut content:Vec<_> = std::fs::read_dir(p).unwrap().map(|x| x.unwrap().path().file_name().unwrap().to_os_string().into_string().unwrap()).collect();
-    content.insert(0,String::from(".."));
+    content.insert(0, String::from(".."));
     content
 }
 
@@ -48,7 +47,7 @@ impl<'a> State<'a> {
 
     fn next_page(&mut self){
         self.index = 0;
-        let pages = self.content.len()/(self.rb.height()-PRINT_OFFSET);
+        let pages = self.content.len() / (self.rb.height()-PRINT_OFFSET);
         if pages != 0 && self.page < pages { self.page += 1;} // WIP
     }
 
@@ -72,8 +71,9 @@ impl<'a> State<'a> {
             };
 
             Command::new(editor)
-                .args(&[s])
-                .status();
+                .arg(s)
+                .status()
+                .unwrap();
 
             std::thread::sleep(std::time::Duration::from_millis(1000));
         }
@@ -82,18 +82,18 @@ impl<'a> State<'a> {
     fn print(&mut self){
         self.rb.clear();
         for (i, entry) in self.queue.iter().enumerate() {
-            let (s,sty) = entry.clone();
-            self.rb.print(0,i,sty,rustbox::Color::White,rustbox::Color::Black,s.as_str());
+            let &(ref s, ref sty) = entry;
+            self.rb.print(0, i, *sty, rustbox::Color::White, rustbox::Color::Black, s.as_str());
         }
         self.rb.present();
         self.queue.clear();
     }
 
     fn list_current_dir(&mut self) {
-        let pages = self.content.len()/(self.rb.height()-PRINT_OFFSET);
+        let pages = self.content.len() / (self.rb.height()-PRINT_OFFSET);
         self.queue.push((std::env::current_dir().unwrap().into_os_string().into_string().unwrap(),rustbox::RB_REVERSE));
-        self.queue.push((format!("Item(s): {} Page(s):{}/{}",self.content.len(),self.page+1,pages+1),rustbox::RB_REVERSE));
-        self.queue.push((String::from(""),rustbox::RB_NORMAL));
+        self.queue.push((format!("Item(s): {} Page(s):{}/{}", self.content.len(), self.page+1, pages+1), rustbox::RB_REVERSE));
+        self.queue.push((String::from(""), rustbox::RB_NORMAL));
 
         let min = self.page*(self.rb.height()-PRINT_OFFSET);
         for i in 0..(self.rb.height()-PRINT_OFFSET) {
@@ -105,10 +105,10 @@ impl<'a> State<'a> {
             let entry = &self.content[i+min];
             let p = Path::new(entry);
             if std::fs::metadata(p).unwrap().is_dir() {
-                self.queue.push(([entry,"/"].concat(),sty));
+                self.queue.push(([entry,"/"].concat(), sty));
             }
             else {
-                self.queue.push((entry.to_owned(),sty));
+                self.queue.push((entry.to_owned(), sty));
             }
         }
 
@@ -117,7 +117,7 @@ impl<'a> State<'a> {
 }
 
 fn main(){
-    let rb = rustbox::RustBox::init(Default::default()).unwrap();
+    let rb = RustBox::init(Default::default()).unwrap();
     let mut f = State::new(&rb);
 
     loop {
@@ -125,14 +125,12 @@ fn main(){
         match rb.poll_event(false) {
             Ok(rustbox::Event::KeyEvent(key)) => {
                 match key {
-                    rustbox::Key::Char('q') => { break; }
-                    rustbox::Key::Down |
-                    rustbox::Key::Char('j') => { f.inc_index(); }
-                    rustbox::Key::Up |
-                    rustbox::Key::Char('k') => { f.dec_index(); }
-                    rustbox::Key::Enter     => { f.open();      }
-                    rustbox::Key::Right     => { f.next_page(); }
-                    rustbox::Key::Left      => { f.prev_page(); }
+                    Key::Char('q')             => { break; }
+                    Key::Down | Key::Char('j') => { f.inc_index(); }
+                    Key::Up | Key::Char('k')   => { f.dec_index(); }
+                    Key::Enter                 => { f.open();      }
+                    Key::Right                 => { f.next_page(); }
+                    Key::Left                  => { f.prev_page(); }
                     _ => { }
                 }
             },
