@@ -6,25 +6,11 @@ use std::path::Path;
 use std::string::String;
 
 fn get_dir_contents(p:&Path) -> std::io::Result<Vec<String>> {
-    let mut content:Vec<_> = match std::fs::read_dir(p) {
-        Ok(v) => {
-            v.filter_map(|x| match x {
-                Ok(v) => {
-                    match v.path().file_name() {
-                        Some(v) => match v.to_os_string().into_string() {
-                            Ok(v) => Some(v),
-                            Err(_) => None
-                        },
-                        None => None
-                    }
-                },
-                Err(_) => None
-            }).collect()
-        },
-        Err(e) => {return Err(e);}
-    };
-    content.insert(0, String::from(".."));
-    Ok(content)
+    std::fs::read_dir(p).map(|v|
+        vec![String::from("..")].into_iter().chain(v.into_iter().filter_map(|x|
+            x.ok().and_then(|v| v.path().file_name().and_then(|v| v.to_os_string().into_string().ok()))
+        )).collect()
+    )
 }
 
 fn get_current_dir_contents() -> std::io::Result<Vec<String>> {
@@ -100,10 +86,7 @@ impl<'a> State<'a> {
                     }
                 }
                 else {
-                    let editor = match std::env::var("EDITOR") {
-                        Ok(val) => val,
-                        Err(_)  => String::from("vi")
-                    };
+                    let editor = std::env::var("EDITOR").unwrap_or(String::from("vi"));
 
                     Command::new(editor)
                         .arg(s)
