@@ -51,14 +51,18 @@ impl<'a> State<'a> {
     }
 
     fn next_page(&mut self){
-        self.index = 0;
         let pages = self.content.len() / (self.rb.height()-PRINT_OFFSET);
-        if pages != 0 && self.page < pages { self.page += 1;} // WIP
+        if pages != 0 && self.page < pages {
+            self.index = 0;
+            self.page += 1;
+        }
     }
 
     fn prev_page(&mut self){
-        self.index = 0;
-        if self.page > 0 { self.page -= 1; }
+        if self.page > 0 {
+            self.index = 0;
+            self.page -= 1;
+        }
     }
 
     fn open(&mut self){
@@ -113,7 +117,7 @@ impl<'a> State<'a> {
         let pages = self.content.len() / (self.rb.height()-PRINT_OFFSET);
         self.queue.push((std::env::current_dir().unwrap().into_os_string().into_string().unwrap(),rustbox::RB_REVERSE));
         self.queue.push((format!("Item(s): {} Page(s):{}/{}", self.content.len(), self.page+1, pages+1), rustbox::RB_REVERSE));
-        self.queue.push((format!("{}",self.error),rustbox::RB_REVERSE));
+        self.queue.push((self.error.clone(),rustbox::RB_REVERSE));
         self.queue.push((String::from(""), rustbox::RB_NORMAL));
 
         let min = self.page*(self.rb.height()-PRINT_OFFSET);
@@ -149,12 +153,12 @@ fn main(){
         match rb.poll_event(false) {
             Ok(rustbox::Event::KeyEvent(key)) => {
                 match key {
-                    Key::Char('q')             => { break; }
-                    Key::Down | Key::Char('j') => { f.inc_index(); }
-                    Key::Up | Key::Char('k')   => { f.dec_index(); }
-                    Key::Enter                 => { f.open();      }
-                    Key::Right                 => { f.next_page(); }
-                    Key::Left                  => { f.prev_page(); }
+                    Key::Char('q')              => { break; }
+                    Key::Down  | Key::Char('j') => { f.inc_index(); }
+                    Key::Up    | Key::Char('k') => { f.dec_index(); }
+                    Key::Enter                  => { f.open();      }
+                    Key::Right | Key::Char('l') => { f.next_page(); }
+                    Key::Left  | Key::Char('h') => { f.prev_page(); }
                     _ => { }
                 }
             },
