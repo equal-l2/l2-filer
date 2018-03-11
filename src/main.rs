@@ -5,13 +5,20 @@ use std::error::Error;
 use std::path::Path;
 use std::string::String;
 
+// Return a list of files
 fn get_dir_contents(p: &Path) -> std::io::Result<Vec<String>> {
-    std::fs::read_dir(p).map(|rd| {
-        vec![String::from("..")]
-            .into_iter()
-            .chain(rd.filter_map(|result| result.ok().and_then(|de| de.file_name().into_string().ok())))
-            .collect()
-    })
+    let mut v: Vec<String> = std::fs::read_dir(p).map(|rd| {
+        rd.filter_map(|result| {
+            // Get the filename from DirEntry as OsString,
+            // then convert it to String.
+            // Any invalid DirEntry will be discarded
+            result.ok().and_then(|de| de.file_name().into_string().ok())
+        }).collect()
+    })?;
+
+    v.sort_unstable(); // Sort filenames
+
+    Ok(std::iter::once("..".into()).chain(v.into_iter()).collect()) // Prepend ".."
 }
 
 fn get_current_dir_contents() -> std::io::Result<Vec<String>> {
