@@ -43,7 +43,7 @@ impl<'a> State<'a> {
             page: 0,
             content: get_current_dir_contents().unwrap(),
             queue: vec![],
-            error: String::from(""),
+            error: "".into(),
             item_num: 0,
             rb: rb_ref,
         }
@@ -78,7 +78,7 @@ impl<'a> State<'a> {
 
     fn open(&mut self) {
         let s = &self.content[self.page * (self.rb.height() - PRINT_OFFSET) + self.index].clone();
-        let p = Path::new(s.as_str());
+        let p = Path::new(s);
         match std::fs::metadata(p) {
             Ok(v) => {
                 if v.is_dir() {
@@ -127,7 +127,7 @@ impl<'a> State<'a> {
         }
         self.rb.present();
         self.queue.clear();
-        self.error = String::from("");
+        self.error = "".into();
     }
 
     fn list_current_dir(&mut self) {
@@ -150,7 +150,7 @@ impl<'a> State<'a> {
             rustbox::RB_REVERSE,
         ));
         self.queue.push((self.error.clone(), rustbox::RB_REVERSE));
-        self.queue.push((String::from(""), rustbox::RB_NORMAL));
+        self.queue.push(("".into(), rustbox::RB_NORMAL));
 
         let min = self.page * (self.rb.height() - PRINT_OFFSET);
         self.item_num = 0;
