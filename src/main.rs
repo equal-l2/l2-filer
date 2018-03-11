@@ -5,12 +5,13 @@ use std::error::Error;
 use std::path::Path;
 use std::string::String;
 
-fn get_dir_contents(p:&Path) -> std::io::Result<Vec<String>> {
-    std::fs::read_dir(p).map(|v|
-        vec![String::from("..")].into_iter().chain(v.into_iter().filter_map(|x|
-            x.ok().and_then(|v| v.path().file_name().and_then(|v| v.to_os_string().into_string().ok()))
-        )).collect()
-    )
+fn get_dir_contents(p: &Path) -> std::io::Result<Vec<String>> {
+    std::fs::read_dir(p).map(|rd| {
+        vec![String::from("..")]
+            .into_iter()
+            .chain(rd.filter_map(|result| result.ok().and_then(|de| de.file_name().into_string().ok())))
+            .collect()
+    })
 }
 
 fn get_current_dir_contents() -> std::io::Result<Vec<String>> {
