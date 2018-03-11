@@ -87,7 +87,7 @@ impl<'a> State<'a> {
                             self.content = match get_current_dir_contents() {
                                 Ok(v) => v,
                                 Err(_) => {
-                                    self.error = String::from("Cannot open directory");
+                                    self.error = "Cannot retrieve content of the directory".into();
                                     return;
                                 }
                             };
@@ -95,17 +95,18 @@ impl<'a> State<'a> {
                             self.page = 0;
                         }
                         Err(_) => {
-                            self.error = String::from("Cannot open directory");
+                            self.error = "Cannot move to the directory".into();
                             return;
                         }
                     }
                 } else {
-                    let editor = std::env::var("EDITOR").unwrap_or(String::from("vi"));
+                    let editor = std::env::var("EDITOR").unwrap_or("vi".into());
 
                     Command::new(editor).arg(s).status().unwrap();
                 }
             }
             Err(_) => {
+                self.error = "Cannot retrieve file metadata".into();
                 return;
             }
         }
@@ -133,7 +134,7 @@ impl<'a> State<'a> {
         let pages = self.content.len() / (self.rb.height() - PRINT_OFFSET);
         self.queue.push((
             std::env::current_dir()
-                .unwrap()
+                .unwrap() // The directory should have checked in `open()` already.
                 .into_os_string()
                 .into_string()
                 .unwrap(),
