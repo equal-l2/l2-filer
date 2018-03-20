@@ -4,7 +4,7 @@ use std::process::Command;
 use std::error::Error;
 use std::path::Path;
 
-// Return a list of files
+/// Return a list of files
 fn get_dir_contents(p: &Path) -> std::io::Result<Vec<String>> {
     let mut v: Vec<String> = std::fs::read_dir(p).map(|rd| {
         rd.filter_map(|result| {
@@ -13,24 +13,28 @@ fn get_dir_contents(p: &Path) -> std::io::Result<Vec<String>> {
             // Any invalid DirEntry will be discarded
             result.ok().and_then(|de| de.file_name().into_string().ok())
         }).collect()
-    })?;
+    })?; // Return Err if something is wrong.
 
     v.sort_unstable(); // Sort filenames
 
     Ok(std::iter::once("..".into()).chain(v.into_iter()).collect()) // Prepend ".."
 }
 
+/// Convenient wrapper for `get_dir_content`
 fn get_current_dir_contents() -> std::io::Result<Vec<String>> {
     get_dir_contents(std::env::current_dir().unwrap().as_path())
 }
 
-const PRINT_OFFSET: usize = 5;
+const HEAD_LINES: usize = 5; // Lines needed for head
+const FOOT_LINES: usize = 1; // Lines needed for foot
 
 struct State<'a> {
     index: usize,
     page: usize,
     content: Vec<String>,
-    queue: Vec<(String, Style)>,
+    head: Vec<(String, Style)>,
+    body: Vec<(String, Style)>,
+    foot: Vec<(String, Style)>,
     error: String,
     item_num: usize,
     rb: &'a rustbox::RustBox,
@@ -42,7 +46,9 @@ impl<'a> State<'a> {
             index: 0,
             page: 0,
             content: get_current_dir_contents().unwrap(),
-            queue: vec![],
+            head: vec![],
+            body: vec![],
+            foot: vec![],
             error: "".into(),
             item_num: 0,
             rb: rb_ref,
@@ -62,7 +68,7 @@ impl<'a> State<'a> {
     }
 
     fn next_page(&mut self) {
-        let pages = self.content.len() / (self.rb.height() - PRINT_OFFSET);
+        let pages = self.get_pages_count();
         if pages != 0 && self.page < pages {
             self.index = 0;
             self.page += 1;
@@ -77,7 +83,7 @@ impl<'a> State<'a> {
     }
 
     fn open(&mut self) {
-        let s = &self.content[self.page * (self.rb.height() - PRINT_OFFSET) + self.index].clone();
+        let s = &self.content[self.page * self.get_effective_height() + self.index].to_owned();
         let p = Path::new(s);
         match std::fs::metadata(p) {
             Ok(v) => {
@@ -102,7 +108,8 @@ impl<'a> State<'a> {
                 } else {
                     let editor = std::env::var("EDITOR").unwrap_or("vi".into());
 
-                    Command::new(editor).arg(s).status().unwrap();
+                    let _ = Command::new(editor).arg(s).status();
+                    self.rb.clear();
                 }
             }
             Err(_) => {
@@ -112,27 +119,66 @@ impl<'a> State<'a> {
         }
     }
 
-    fn print(&mut self) {
+    fn print_queue(&mut self) {
+        let mut y = 0;
         self.rb.clear();
-        for (i, entry) in self.queue.iter().enumerate() {
+        for entry in self.head.iter() {
             let &(ref s, ref sty) = entry;
             self.rb.print(
                 0,
-                i,
+                y,
                 *sty,
                 rustbox::Color::White,
                 rustbox::Color::Black,
                 s.as_str(),
             );
+            y += 1;
         }
+
+        for entry in self.body.iter(){
+            let &(ref s, ref sty) = entry;
+            self.rb.print(
+                0,
+                y,
+                *sty,
+                rustbox::Color::White,
+                rustbox::Color::Black,
+                s.as_str(),
+            );
+            y += 1;
+        }
+
+        y = self.rb.height()-1;
+        for entry in self.foot.iter().rev() {
+            let &(ref s, ref sty) = entry;
+            self.rb.print(
+                0,
+                y,
+                *sty,
+                rustbox::Color::White,
+                rustbox::Color::Black,
+                s.as_str(),
+            );
+            y -= 1;
+        }
+
         self.rb.present();
-        self.queue.clear();
         self.error = "".into();
     }
 
-    fn list_current_dir(&mut self) {
-        let pages = self.content.len() / (self.rb.height() - PRINT_OFFSET);
-        self.queue.push((
+    fn get_pages_count(&self) -> usize {
+        self.content.len() / self.get_effective_height()
+    }
+
+    fn get_effective_height(&self) -> usize {
+        self.rb.height() - (HEAD_LINES+FOOT_LINES)
+    }
+
+    fn prepare_head(&mut self) {
+        self.head.clear();
+        let pages = self.get_pages_count();
+        // Current directory
+        self.head.push((
             std::env::current_dir()
                 .unwrap() // The directory should have checked in `open()` already.
                 .into_os_string()
@@ -140,7 +186,9 @@ impl<'a> State<'a> {
                 .unwrap(),
             rustbox::RB_REVERSE,
         ));
-        self.queue.push((
+
+        // Count for items and pages
+        self.head.push((
             format!(
                 "Item(s): {} Page(s):{}/{}",
                 self.content.len(),
@@ -149,13 +197,20 @@ impl<'a> State<'a> {
             ),
             rustbox::RB_REVERSE,
         ));
-        self.queue.push((self.error.clone(), rustbox::RB_REVERSE));
-        self.queue.push(("".into(), rustbox::RB_NORMAL));
 
-        let min = self.page * (self.rb.height() - PRINT_OFFSET);
+        // Error
+        self.head.push((self.error.clone(), rustbox::RB_REVERSE));
+
+        // Divider
+        self.head.push(("".into(), rustbox::RB_NORMAL));
+    }
+
+    fn prepare_body(&mut self) {
+        self.body.clear();
+        let min = self.page * self.get_effective_height();
         self.item_num = 0;
-        for i in 0..(self.rb.height() - PRINT_OFFSET) {
-            if i + min >= self.content.len() {
+        for i in 0..self.get_effective_height()-1 {
+            if i + min >= self.content.len() { // all contents is printed
                 break;
             }
 
@@ -168,13 +223,26 @@ impl<'a> State<'a> {
             let entry = &self.content[i + min];
             let p = Path::new(entry);
             if std::fs::metadata(p).unwrap().is_dir() {
-                self.queue.push(([entry, "/"].concat(), sty));
+                self.body.push(([entry, "/"].concat(), sty));
             } else {
-                self.queue.push((entry.to_owned(), sty));
+                self.body.push((entry.to_owned(), sty));
             }
         }
 
-        self.print();
+        // Divider
+        self.body.push(("".into(), rustbox::RB_NORMAL));
+    }
+
+    fn prepare_foot(&mut self) {
+        self.foot.clear();
+        self.foot.push(("FOOT TEST".into(), rustbox::RB_REVERSE));
+    }
+
+    fn print(&mut self) {
+        self.prepare_head();
+        self.prepare_body();
+        self.prepare_foot();
+        self.print_queue();
     }
 }
 
@@ -183,7 +251,7 @@ fn main() {
     let mut f = State::new(&rb);
 
     loop {
-        f.list_current_dir();
+        f.print();
         match rb.poll_event(false) {
             Ok(rustbox::Event::KeyEvent(key)) => match key {
                 Key::Char('q') => {
