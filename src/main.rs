@@ -1,4 +1,7 @@
+#[macro_use]
+extern crate log;
 extern crate rustbox;
+extern crate simplelog;
 use rustbox::{Key, RustBox, Style};
 use std::process::Command;
 use std::error::Error;
@@ -106,10 +109,20 @@ impl<'a> State<'a> {
                         }
                     }
                 } else {
+                    // Get the appropreate editor from environmental variable `EDITOR`.
+                    // If failed, it falls back to vi.
                     let editor = std::env::var("EDITOR").unwrap_or("vi".into());
+                    debug!("Use {} as editor", editor);
 
-                    let _ = Command::new(editor).arg(s).status();
-                    self.rb.clear();
+                    match Command::new(&editor).arg(s).status() {
+                        Ok(st) => {
+                            debug!("Editor returned status code {}", st);
+                        },
+                        Err(e) => {
+                            self.error = format!("Cannot execute editor {}", editor);
+                            debug!("Editor execution error: {}", e);
+                        }
+                    }
                 }
             }
             Err(_) => {
@@ -135,7 +148,7 @@ impl<'a> State<'a> {
             y += 1;
         }
 
-        for entry in self.body.iter(){
+        for entry in self.body.iter() {
             let &(ref s, ref sty) = entry;
             self.rb.print(
                 0,
@@ -148,7 +161,7 @@ impl<'a> State<'a> {
             y += 1;
         }
 
-        y = self.rb.height()-1;
+        y = self.rb.height() - 1;
         for entry in self.foot.iter().rev() {
             let &(ref s, ref sty) = entry;
             self.rb.print(
@@ -171,7 +184,7 @@ impl<'a> State<'a> {
     }
 
     fn get_effective_height(&self) -> usize {
-        self.rb.height() - (HEAD_LINES+FOOT_LINES)
+        self.rb.height() - (HEAD_LINES + FOOT_LINES)
     }
 
     fn prepare_head(&mut self) {
@@ -209,8 +222,9 @@ impl<'a> State<'a> {
         self.body.clear();
         let min = self.page * self.get_effective_height();
         self.item_num = 0;
-        for i in 0..self.get_effective_height()-1 {
-            if i + min >= self.content.len() { // all contents is printed
+        for i in 0..self.get_effective_height() - 1 {
+            if i + min >= self.content.len() {
+                // all contents is printed
                 break;
             }
 
@@ -239,6 +253,8 @@ impl<'a> State<'a> {
     }
 
     fn print(&mut self) {
+        self.rb.clear();
+        self.rb.present();
         self.prepare_head();
         self.prepare_body();
         self.prepare_foot();
@@ -247,33 +263,45 @@ impl<'a> State<'a> {
 }
 
 fn main() {
+    let _logger = simplelog::WriteLogger::init(
+        log::LevelFilter::Trace,
+        simplelog::Config::default(),
+        std::fs::File::create("log.txt").unwrap(),
+    );
+
     let rb = RustBox::init(Default::default()).unwrap();
     let mut f = State::new(&rb);
 
     loop {
         f.print();
         match rb.poll_event(false) {
-            Ok(rustbox::Event::KeyEvent(key)) => match key {
-                Key::Char('q') => {
-                    break;
+            Ok(rustbox::Event::KeyEvent(key)) => {
+                debug!("Key Pressed: {:?}", key);
+                match key {
+                    Key::Char('q') => {
+                        break;
+                    }
+                    Key::Down | Key::Char('j') => {
+                        f.inc_index();
+                    }
+                    Key::Up | Key::Char('k') => {
+                        f.dec_index();
+                    }
+                    Key::Enter => {
+                        f.open();
+                    }
+                    Key::Right | Key::Char('l') => {
+                        f.next_page();
+                    }
+                    Key::Left | Key::Char('h') => {
+                        f.prev_page();
+                    }
+                    Key::Char('r') => {
+                        f.print_queue();
+                    }
+                    _ => {}
                 }
-                Key::Down | Key::Char('j') => {
-                    f.inc_index();
-                }
-                Key::Up | Key::Char('k') => {
-                    f.dec_index();
-                }
-                Key::Enter => {
-                    f.open();
-                }
-                Key::Right | Key::Char('l') => {
-                    f.next_page();
-                }
-                Key::Left | Key::Char('h') => {
-                    f.prev_page();
-                }
-                _ => {}
-            },
+            }
             Err(e) => panic!("{}", e.description()),
             _ => {}
         }
